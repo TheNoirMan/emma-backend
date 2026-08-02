@@ -1,23 +1,20 @@
-import os
 from fastapi import FastAPI
 from pydantic import BaseModel
-from openai import OpenAI
+from groq import Groq
+import os
 
 app = FastAPI()
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 class ChatRequest(BaseModel):
     message: str
 
 SYSTEM_PROMPT = """
 You are EMMA, a personal AI assistant.
-
-Rules:
-- Speak naturally.
-- Reply in Tamil if the user speaks Tamil.
-- Reply in English if the user speaks English.
-- Be friendly, concise, and helpful.
+Speak naturally.
+Reply in Tamil if the user speaks Tamil.
+Reply in English if the user speaks English.
 """
 
 @app.get("/")
@@ -26,20 +23,14 @@ def home():
 
 @app.post("/chat")
 def chat(request: ChatRequest):
-    response = client.responses.create(
-        model="gpt-5.5",
-        input=[
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT,
-            },
-            {
-                "role": "user",
-                "content": request.message,
-            },
-        ],
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": request.message}
+        ]
     )
 
     return {
-        "reply": response.output_text
+        "reply": response.choices[0].message.content
     }
