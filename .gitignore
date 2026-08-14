@@ -1,2 +1,16 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
-*
+# Secrets
+lib/services/secrets.dart
+lib/secrets.dart
+.env
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+pubspec.lock
+
+# Android
+android/.gradle/
+android/local.properties
