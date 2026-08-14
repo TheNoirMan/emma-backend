@@ -1,16 +1,13 @@
-# Secrets
-lib/services/secrets.dart
-lib/secrets.dart
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Environment / secrets
 .env
+secrets.dart
 
-# Flutter
-.dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
-.packages
-build/
-pubspec.lock
-
-# Android
-android/.gradle/
-android/local.properties
+# IDE
+.vscode/
+.idea/
