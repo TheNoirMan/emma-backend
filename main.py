@@ -33,7 +33,7 @@ client = Groq(api_key=GROQ_API_KEY)
 # =====================================================
 
 CHAT_MODEL = "openai/gpt-oss-20b"
-VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+VISION_MODEL = "qwen/qwen3.6-27b"
 
 # =====================================================
 # CHAT REQUEST
@@ -295,25 +295,15 @@ async def vision(file: UploadFile = File(...)):
                     "content": [
                         {
                             "type": "text",
-                            "text": """
-You are EMMA's vision system.
-
-Analyze the image carefully.
-
-Describe:
-- Important objects
-- People if present
-- Environment
-- Actions
-- Colors
-- Visible text
-- Important details
-- Anything useful for the user
-
-Do not invent details that cannot be seen.
-
-Give a natural, clear description that EMMA can speak aloud.
-""",
+                            "text": (
+    "You are EMMA Vision, an intelligent visual assistant. "
+    "Analyze this image carefully and describe what you see. "
+    "Identify important objects, people, animals, environment, "
+    "actions, visible text, colors, signs, and other relevant details. "
+    "If there is text, read it accurately. "
+    "Do not invent details that cannot be seen. "
+    "Give a clear, natural answer that a user can understand."
+)
                         },
                         {
                             "type": "image_url",
