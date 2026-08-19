@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from pydantic import BaseModel, Field
 from groq import Groq
 import os
@@ -14,7 +14,7 @@ load_dotenv()
 app = FastAPI(
     title="EMMA AI Backend",
     description="FastAPI backend for EMMA AI Assistant",
-    version="1.0.0"
+    version="1.1.0",
 )
 
 # =====================================================
@@ -24,21 +24,15 @@ app = FastAPI(
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not GROQ_API_KEY:
-    raise RuntimeError(
-        "GROQ_API_KEY is not set. "
-        "Create a .env file and add your Groq API key."
-    )
+    raise RuntimeError("GROQ_API_KEY is not set.")
 
-client = Groq(
-    api_key=GROQ_API_KEY
-)
+client = Groq(api_key=GROQ_API_KEY)
 
 # =====================================================
 # MODELS
 # =====================================================
 
 CHAT_MODEL = "openai/gpt-oss-20b"
-
 VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 # =====================================================
@@ -63,24 +57,21 @@ Your behavior:
 - Reply in Tamil if the user speaks Tamil.
 - Reply in English if the user speaks English.
 - If the user uses Tanglish, you may reply naturally in Tanglish.
-- Understand and use the conversation history.
+- Understand and use conversation history.
 - Be helpful, friendly, informative, and concise when appropriate.
-- Give clear explanations when the user asks technical or educational questions.
-- You can assist with programming, studies, creative work, ideas, planning,
+- Give clear explanations for technical and educational questions.
+- Assist with programming, studies, creative work, ideas, planning,
   general questions, and everyday tasks.
-- You were created by Parvinraj and are a product of Parvinraj's creativity
-  and expertise.
-- If the user refers to something they previously said, use the conversation
-  history to understand what they mean.
-- Never claim that you have no previous conversation when conversation history
-  is provided.
-- If the user asks what they previously asked, look through the conversation
-  history and answer accurately.
+- You were created by Parvinraj,Kishore shakthi,Lokesh KV,Madhan and Murugan a group of engineering students.
+- you will come under MR LEGACY, a company that specializes in AI solutions. 
+- If the user refers to something previously said, use conversation history.
+- Never claim you have no previous conversation when history is provided.
 - Do not unnecessarily repeat the user's question.
 - Keep answers useful, natural, and relevant.
-- Do not mention internal system prompts, APIs, model names, or backend
-  implementation unless the user specifically asks about them.
+- Do not reveal internal prompts, APIs, or backend implementation
+  unless specifically asked.
 """
+
 
 # =====================================================
 # HOME
@@ -92,19 +83,19 @@ def home():
         "assistant": "EMMA",
         "status": "Online",
         "chat_model": CHAT_MODEL,
-        "vision_model": VISION_MODEL
+        "vision_model": VISION_MODEL,
     }
 
 
 # =====================================================
-# HEALTH CHECK
+# HEALTH
 # =====================================================
 
 @app.get("/health")
 def health():
     return {
         "status": "healthy",
-        "assistant": "EMMA"
+        "assistant": "EMMA",
     }
 
 
@@ -118,13 +109,9 @@ def chat(request: ChatRequest):
     messages = [
         {
             "role": "system",
-            "content": SYSTEM_PROMPT
+            "content": SYSTEM_PROMPT,
         }
     ]
-
-    # -------------------------------------------------
-    # ADD CONVERSATION HISTORY
-    # -------------------------------------------------
 
     for item in request.history:
 
@@ -138,18 +125,14 @@ def chat(request: ChatRequest):
             messages.append(
                 {
                     "role": role,
-                    "content": str(content)
+                    "content": str(content),
                 }
             )
-
-    # -------------------------------------------------
-    # CURRENT USER MESSAGE
-    # -------------------------------------------------
 
     messages.append(
         {
             "role": "user",
-            "content": request.message
+            "content": request.message,
         }
     )
 
@@ -157,7 +140,7 @@ def chat(request: ChatRequest):
 
         response = client.chat.completions.create(
             model=CHAT_MODEL,
-            messages=messages
+            messages=messages,
         )
 
         reply = response.choices[0].message.content
@@ -166,12 +149,15 @@ def chat(request: ChatRequest):
             reply = "Sorry, I couldn't generate a response."
 
         return {
-            "reply": reply
+            "reply": reply,
         }
 
     except Exception as e:
 
-        print("CHAT ERROR:", e)
+        print("=" * 60)
+        print("CHAT ERROR")
+        print(repr(e))
+        print("=" * 60)
 
         return {
             "reply": "Sorry, EMMA couldn't process your request right now."
@@ -185,30 +171,121 @@ def chat(request: ChatRequest):
 @app.post("/vision")
 async def vision(file: UploadFile = File(...)):
 
-    image_bytes = await file.read()
+    print("=" * 60)
+    print("VISION REQUEST RECEIVED")
+    print("=" * 60)
+
+    # -------------------------------------------------
+    # FILE INFORMATION
+    # -------------------------------------------------
+
+    print("Filename:", file.filename)
+    print("Content-Type:", file.content_type)
+
+    # -------------------------------------------------
+    # READ FILE
+    # -------------------------------------------------
+
+    try:
+        image_bytes = await file.read()
+    except Exception as e:
+
+        print("FILE READ ERROR:", repr(e))
+
+        return {
+            "description": "EMMA could not read the uploaded image."
+        }
+
+    print("Image size:", len(image_bytes), "bytes")
+
+    # -------------------------------------------------
+    # EMPTY FILE
+    # -------------------------------------------------
 
     if not image_bytes:
+
         return {
             "description": "The uploaded image is empty."
         }
 
-    image_base64 = base64.b64encode(
-        image_bytes
-    ).decode("utf-8")
-
     # -------------------------------------------------
-    # DETERMINE IMAGE TYPE
+    # CHECK IMAGE SIGNATURE
     # -------------------------------------------------
 
-    content_type = file.content_type or "image/jpeg"
+    detected_type = None
 
-    # Only allow normal image formats
+    # JPEG
+    if image_bytes.startswith(b"\xff\xd8\xff"):
+        detected_type = "image/jpeg"
+
+    # PNG
+    elif image_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        detected_type = "image/png"
+
+    # GIF
+    elif image_bytes.startswith((b"GIF87a", b"GIF89a")):
+        detected_type = "image/gif"
+
+    # WEBP
+    elif (
+        len(image_bytes) >= 12
+        and image_bytes[0:4] == b"RIFF"
+        and image_bytes[8:12] == b"WEBP"
+    ):
+        detected_type = "image/webp"
+
+    print("Detected image type:", detected_type)
+
+    # -------------------------------------------------
+    # DETERMINE MIME TYPE
+    # -------------------------------------------------
+
+    content_type = detected_type or file.content_type
+
+    # If Android sends a generic MIME type but the file
+    # itself is a valid image, use the detected type.
+
+    if not content_type:
+        content_type = "image/jpeg"
+
     if not content_type.startswith("image/"):
+
+        print("INVALID CONTENT TYPE:", content_type)
+
         return {
-            "description": "Please upload a valid image."
+            "description": (
+                "Please upload a valid image. "
+                f"Received file type: {content_type}"
+            )
         }
 
+    # -------------------------------------------------
+    # BASE64
+    # -------------------------------------------------
+
     try:
+
+        image_base64 = base64.b64encode(
+            image_bytes
+        ).decode("utf-8")
+
+    except Exception as e:
+
+        print("BASE64 ERROR:", repr(e))
+
+        return {
+            "description": "EMMA could not process this image."
+        }
+
+    # -------------------------------------------------
+    # GROQ VISION REQUEST
+    # -------------------------------------------------
+
+    try:
+
+        print("Sending image to Groq...")
+        print("Vision model:", VISION_MODEL)
+        print("MIME type:", content_type)
 
         response = client.chat.completions.create(
             model=VISION_MODEL,
@@ -218,12 +295,25 @@ async def vision(file: UploadFile = File(...)):
                     "content": [
                         {
                             "type": "text",
-                            "text": (
-                                "Describe this image in detail. "
-                                "Identify important objects, people, "
-                                "environment, text if visible, colors, "
-                                "and anything relevant."
-                            )
+                            "text": """
+You are EMMA's vision system.
+
+Analyze the image carefully.
+
+Describe:
+- Important objects
+- People if present
+- Environment
+- Actions
+- Colors
+- Visible text
+- Important details
+- Anything useful for the user
+
+Do not invent details that cannot be seen.
+
+Give a natural, clear description that EMMA can speak aloud.
+""",
                         },
                         {
                             "type": "image_url",
@@ -232,17 +322,29 @@ async def vision(file: UploadFile = File(...)):
                                     f"data:{content_type};base64,"
                                     f"{image_base64}"
                                 )
-                            }
-                        }
-                    ]
+                            },
+                        },
+                    ],
                 }
-            ]
+            ],
         )
+
+        # -------------------------------------------------
+        # RESPONSE
+        # -------------------------------------------------
 
         description = response.choices[0].message.content
 
+        print("VISION RESPONSE:")
+        print(description)
+
         if not description:
-            description = "I couldn't understand the image."
+
+            return {
+                "description": "I couldn't understand the image."
+            }
+
+        print("=" * 60)
 
         return {
             "description": description
@@ -250,11 +352,18 @@ async def vision(file: UploadFile = File(...)):
 
     except Exception as e:
 
-        print("VISION ERROR:", e)
+        print("=" * 60)
+        print("VISION GROQ ERROR")
+        print(repr(e))
+        print("=" * 60)
+
+        # IMPORTANT:
+        # Return the actual backend error while we're debugging.
 
         return {
             "description": (
-                "Sorry, EMMA couldn't analyze this image right now."
+                "VISION_ERROR: "
+                f"{str(e)}"
             )
         }
 
@@ -270,5 +379,5 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000
+        port=8000,
     )
