@@ -11,3 +11,9 @@ secrets.dart
 # IDE
 .vscode/
 .idea/
+# EMMA runtime data
+emma_devices.db
+devices.json
+emma_device.json
+%APPDATA%/
+
