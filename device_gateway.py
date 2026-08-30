@@ -30,19 +30,23 @@ from device_database import (
 # PAIRING FLOW
 #
 # 1. Windows registers
-# 2. Cloud generates device ID + pairing code + token
+# 2. Cloud generates:
+#       - device ID
+#       - pairing code
+#       - permanent device token
 # 3. Windows displays pairing code
 # 4. Android enters pairing code
 # 5. Android calls /device/connect
-# 6. Windows claims token
-# 7. Token is permanently stored by Windows
-# 8. Pairing code is destroyed
-# 9. Windows reconnects automatically
+# 6. Windows calls /device/claim-token
+# 7. Permanent token is returned to Windows
+# 8. Windows saves token locally
+# 9. Pairing code is destroyed
+# 10. Future starts use /device/token-connect
 #
-# IMPORTANT:
-# /claim-token also safely completes pairing if Android
-# did not call /connect first, as long as the pairing code
-# is valid.
+# Pairing code lifetime:
+#       30 minutes
+#
+# The pairing code is also one-time-use.
 #
 # ============================================================
 
@@ -54,10 +58,32 @@ router = APIRouter(
 
 
 # ============================================================
-# RUNTIME COMMAND QUEUE
+# CONFIGURATION
 # ============================================================
 
+PAIRING_CODE_LIFETIME = 30 * 60
+
+ONLINE_TIMEOUT = 30
+
+
+# ============================================================
+# RUNTIME STATE
+# ============================================================
+
+# Commands are intentionally kept in memory for the V1 SIH build.
 command_queues: Dict[str, list] = {}
+
+# Pairing expiry timestamps are kept in memory.
+#
+# device_id -> unix timestamp
+#
+# Example:
+#
+# {
+#     "abc123": 1790000000.0
+# }
+#
+pairing_expiry_times: Dict[str, float] = {}
 
 
 # ============================================================
@@ -103,11 +129,106 @@ class DeviceCommandRequest(BaseModel):
 # ============================================================
 
 def generate_pairing_code() -> str:
+    """
+    Generates a 6-character hexadecimal pairing code.
+
+    Example:
+        A2119B
+        42B06A
+    """
     return secrets.token_hex(3).upper()
 
 
 def generate_device_token() -> str:
+    """
+    Generates a long-lived authentication token.
+    """
     return secrets.token_urlsafe(32)
+
+
+# ============================================================
+# PAIRING EXPIRY HELPERS
+# ============================================================
+
+def set_pairing_expiry(
+    device_id: str,
+) -> None:
+
+    pairing_expiry_times[
+        device_id
+    ] = (
+        time.time()
+        + PAIRING_CODE_LIFETIME
+    )
+
+
+def clear_pairing_expiry(
+    device_id: str,
+) -> None:
+
+    pairing_expiry_times.pop(
+        device_id,
+        None,
+    )
+
+
+def check_pairing_code_active(
+    device_id: str,
+) -> None:
+    """
+    Checks whether a pairing code is still active.
+
+    Existing devices without an in-memory expiry entry are
+    allowed to continue pairing. This keeps the V1 database
+    backward-compatible.
+    """
+
+    expires_at = pairing_expiry_times.get(
+        device_id
+    )
+
+    if expires_at is None:
+        return
+
+    if time.time() >= expires_at:
+
+        # Destroy expired pairing code.
+        clear_pairing_code(
+            device_id
+        )
+
+        clear_pairing_expiry(
+            device_id
+        )
+
+        raise HTTPException(
+            status_code=410,
+            detail=(
+                "Pairing code expired. "
+                "Generate a new code."
+            ),
+        )
+
+
+def get_pairing_seconds_remaining(
+    device_id: str,
+) -> int:
+
+    expires_at = pairing_expiry_times.get(
+        device_id
+    )
+
+    if expires_at is None:
+        return 0
+
+    remaining = int(
+        expires_at - time.time()
+    )
+
+    return max(
+        0,
+        remaining,
+    )
 
 
 # ============================================================
@@ -121,7 +242,10 @@ def extract_bearer_token(
     if not authorization:
         return None
 
-    parts = authorization.strip().split(" ", 1)
+    parts = authorization.strip().split(
+        " ",
+        1,
+    )
 
     if len(parts) != 2:
         return None
@@ -148,6 +272,7 @@ def authenticate_device(
         token = emma_token.strip()
 
     if not token:
+
         raise HTTPException(
             status_code=401,
             detail="Device authentication required.",
@@ -158,6 +283,7 @@ def authenticate_device(
     )
 
     if device is None:
+
         raise HTTPException(
             status_code=404,
             detail="Device not found.",
@@ -168,15 +294,20 @@ def authenticate_device(
     )
 
     if not stored_token:
+
         raise HTTPException(
             status_code=401,
-            detail="Device has not completed token setup.",
+            detail=(
+                "Device has not completed "
+                "token setup."
+            ),
         )
 
     if not secrets.compare_digest(
         stored_token,
         token,
     ):
+
         raise HTTPException(
             status_code=401,
             detail="Invalid device token.",
@@ -197,16 +328,22 @@ def register_device(
     request: DeviceRegisterRequest,
 ):
 
-    device_id = secrets.token_urlsafe(16)
+    device_id = secrets.token_urlsafe(
+        16
+    )
 
-    pairing_code = generate_pairing_code()
+    pairing_code = (
+        generate_pairing_code()
+    )
 
-    device_token = generate_device_token()
+    device_token = (
+        generate_device_token()
+    )
 
     now = time.time()
 
     # --------------------------------------------------------
-    # Create device
+    # CREATE DEVICE IN SQLITE
     # --------------------------------------------------------
 
     create_device(
@@ -218,7 +355,7 @@ def register_device(
     )
 
     # --------------------------------------------------------
-    # Save permanent device token
+    # SAVE PERMANENT TOKEN
     # --------------------------------------------------------
 
     save_device_token(
@@ -227,10 +364,20 @@ def register_device(
     )
 
     # --------------------------------------------------------
-    # Create command queue
+    # START 30-MINUTE PAIRING WINDOW
     # --------------------------------------------------------
 
-    command_queues[device_id] = []
+    set_pairing_expiry(
+        device_id
+    )
+
+    # --------------------------------------------------------
+    # COMMAND QUEUE
+    # --------------------------------------------------------
+
+    command_queues[
+        device_id
+    ] = []
 
     print("=" * 60)
     print("DEVICE REGISTERED")
@@ -238,6 +385,10 @@ def register_device(
     print("Platform:", request.platform)
     print("Device ID:", device_id)
     print("Pairing Code:", pairing_code)
+    print(
+        "Pairing Lifetime:",
+        f"{PAIRING_CODE_LIFETIME // 60} minutes",
+    )
     print("=" * 60)
 
     return DeviceRegisterResponse(
@@ -263,6 +414,7 @@ def connect_device(
     )
 
     if device is None:
+
         raise HTTPException(
             status_code=404,
             detail="Device not found.",
@@ -273,10 +425,21 @@ def connect_device(
     )
 
     if not stored_code:
+
         raise HTTPException(
             status_code=410,
-            detail="Pairing code is no longer valid.",
+            detail=(
+                "Pairing code is no longer valid."
+            ),
         )
+
+    # --------------------------------------------------------
+    # CHECK 30-MINUTE WINDOW
+    # --------------------------------------------------------
+
+    check_pairing_code_active(
+        request.device_id
+    )
 
     submitted_code = (
         request.pairing_code
@@ -284,16 +447,25 @@ def connect_device(
         .upper()
     )
 
+    # --------------------------------------------------------
+    # VERIFY CODE
+    # --------------------------------------------------------
+
     if not secrets.compare_digest(
         stored_code.upper(),
         submitted_code,
     ):
+
         raise HTTPException(
             status_code=401,
             detail="Invalid pairing code.",
         )
 
     now = time.time()
+
+    # --------------------------------------------------------
+    # MARK DEVICE CONNECTED
+    # --------------------------------------------------------
 
     set_connected(
         request.device_id,
@@ -312,16 +484,25 @@ def connect_device(
     print("Device ID:", request.device_id)
     print("=" * 60)
 
+    # IMPORTANT:
+    #
+    # The pairing code is NOT cleared here.
+    #
+    # Windows still needs it to claim the permanent token.
+    #
     return {
         "status": "connected",
         "device_id": device["device_id"],
         "device_name": device["device_name"],
-        "device_token": device.get("device_token"),
+        "device_token": device.get(
+            "device_token"
+        ),
+        "paired": True,
     }
 
 
 # ============================================================
-# WINDOWS AGENT CLAIMS TOKEN
+# WINDOWS AGENT CLAIM TOKEN
 # ============================================================
 
 @router.post("/claim-token")
@@ -334,6 +515,7 @@ def claim_device_token(
     )
 
     if device is None:
+
         raise HTTPException(
             status_code=404,
             detail="Device not found.",
@@ -343,15 +525,22 @@ def claim_device_token(
         "pairing_code"
     )
 
-    # --------------------------------------------------------
-    # Pairing code must still exist
-    # --------------------------------------------------------
-
     if not stored_code:
+
         raise HTTPException(
             status_code=410,
-            detail="Pairing code is no longer available.",
+            detail=(
+                "Pairing code is no longer available."
+            ),
         )
+
+    # --------------------------------------------------------
+    # CHECK EXPIRY
+    # --------------------------------------------------------
+
+    check_pairing_code_active(
+        request.device_id
+    )
 
     submitted_code = (
         request.pairing_code
@@ -360,54 +549,21 @@ def claim_device_token(
     )
 
     # --------------------------------------------------------
-    # Validate pairing code
+    # VERIFY CODE
     # --------------------------------------------------------
 
     if not secrets.compare_digest(
         stored_code.upper(),
         submitted_code,
     ):
+
         raise HTTPException(
             status_code=401,
             detail="Invalid pairing code.",
         )
 
     # --------------------------------------------------------
-    # IMPORTANT FIX
-    #
-    # If Android already called /connect:
-    #
-    #     connected = 1
-    #
-    # If Android did NOT call /connect but the correct
-    # pairing code is presented here, complete pairing now.
-    #
-    # This prevents the 409 loop we were seeing.
-    # --------------------------------------------------------
-
-    if not bool(device.get("connected")):
-
-        print("=" * 60)
-        print("PAIRING FINALIZED THROUGH TOKEN CLAIM")
-        print("Device:", device["device_name"])
-        print("Device ID:", request.device_id)
-        print("=" * 60)
-
-        now = time.time()
-
-        set_connected(
-            request.device_id,
-            True,
-            now,
-        )
-
-        # Refresh device from database
-        device = get_device(
-            request.device_id
-        )
-
-    # --------------------------------------------------------
-    # Get permanent token
+    # GET TOKEN
     # --------------------------------------------------------
 
     device_token = device.get(
@@ -415,18 +571,15 @@ def claim_device_token(
     )
 
     if not device_token:
+
         raise HTTPException(
             status_code=500,
             detail="Device token is unavailable.",
         )
 
     # --------------------------------------------------------
-    # Destroy one-time pairing code
+    # MARK DEVICE CONNECTED
     # --------------------------------------------------------
-
-    clear_pairing_code(
-        request.device_id
-    )
 
     now = time.time()
 
@@ -436,16 +589,42 @@ def claim_device_token(
         now,
     )
 
+    # --------------------------------------------------------
+    # DESTROY ONE-TIME CODE
+    # --------------------------------------------------------
+
+    clear_pairing_code(
+        request.device_id
+    )
+
+    clear_pairing_expiry(
+        request.device_id
+    )
+
+    # --------------------------------------------------------
+    # COMMAND QUEUE
+    # --------------------------------------------------------
+
     command_queues.setdefault(
         request.device_id,
         [],
     )
 
     print("=" * 60)
-    print("WINDOWS AGENT CLAIMED DEVICE TOKEN")
-    print("Device:", device["device_name"])
-    print("Device ID:", request.device_id)
-    print("TOKEN CLAIM SUCCESS")
+    print(
+        "WINDOWS AGENT CLAIMED DEVICE TOKEN"
+    )
+    print(
+        "Device:",
+        device["device_name"],
+    )
+    print(
+        "Device ID:",
+        request.device_id,
+    )
+    print(
+        "TOKEN CLAIM SUCCESS",
+    )
     print("=" * 60)
 
     return {
@@ -453,6 +632,7 @@ def claim_device_token(
         "device_id": request.device_id,
         "device_name": device["device_name"],
         "device_token": device_token,
+        "paired": True,
     }
 
 
@@ -470,6 +650,7 @@ def token_connect(
     )
 
     if device is None:
+
         raise HTTPException(
             status_code=404,
             detail="Device not found.",
@@ -480,15 +661,19 @@ def token_connect(
     )
 
     if not stored_token:
+
         raise HTTPException(
             status_code=401,
-            detail="Device has no authentication token.",
+            detail=(
+                "Device has no authentication token."
+            ),
         )
 
     if not secrets.compare_digest(
         stored_token,
         request.device_token.strip(),
     ):
+
         raise HTTPException(
             status_code=401,
             detail="Invalid device token.",
@@ -508,9 +693,17 @@ def token_connect(
     )
 
     print("=" * 60)
-    print("WINDOWS AGENT RECONNECTED")
-    print("Device:", device["device_name"])
-    print("Device ID:", device["device_id"])
+    print(
+        "WINDOWS AGENT RECONNECTED"
+    )
+    print(
+        "Device:",
+        device["device_name"],
+    )
+    print(
+        "Device ID:",
+        device["device_id"],
+    )
     print("=" * 60)
 
     return {
@@ -525,7 +718,9 @@ def token_connect(
 # HEARTBEAT
 # ============================================================
 
-@router.post("/{device_id}/heartbeat")
+@router.post(
+    "/{device_id}/heartbeat"
+)
 def device_heartbeat(
     device_id: str,
     authorization: Optional[str] = Header(
@@ -562,7 +757,9 @@ def device_heartbeat(
 # STATUS
 # ============================================================
 
-@router.get("/{device_id}/status")
+@router.get(
+    "/{device_id}/status"
+)
 def device_status(
     device_id: str,
     authorization: Optional[str] = Header(
@@ -586,7 +783,7 @@ def device_status(
 
     online = (
         time.time() - last_seen
-    ) <= 30
+    ) <= ONLINE_TIMEOUT
 
     return {
         "device_id": device["device_id"],
@@ -604,7 +801,9 @@ def device_status(
 # DEVICE INFO
 # ============================================================
 
-@router.get("/{device_id}")
+@router.get(
+    "/{device_id}"
+)
 def device_info(
     device_id: str,
     authorization: Optional[str] = Header(
@@ -635,6 +834,11 @@ def device_info(
         "has_pairing_code": bool(
             device.get("pairing_code")
         ),
+        "pairing_seconds_remaining": (
+            get_pairing_seconds_remaining(
+                device_id
+            )
+        ),
         "last_seen": device["last_seen"],
         "created_at": device["created_at"],
     }
@@ -662,7 +866,10 @@ def send_command(
         x_emma_token,
     )
 
-    if not bool(device["connected"]):
+    if not bool(
+        device["connected"]
+    ):
+
         raise HTTPException(
             status_code=409,
             detail="Device is not connected.",
@@ -682,12 +889,20 @@ def send_command(
 
     command_queues[
         request.device_id
-    ].append(command)
+    ].append(
+        command
+    )
 
     print("=" * 60)
     print("COMMAND QUEUED")
-    print("Device:", device["device_name"])
-    print("Command:", request.command)
+    print(
+        "Device:",
+        device["device_name"],
+    )
+    print(
+        "Command:",
+        request.command,
+    )
     print("=" * 60)
 
     return {
@@ -700,7 +915,9 @@ def send_command(
 # WINDOWS AGENT — GET COMMANDS
 # ============================================================
 
-@router.get("/{device_id}/commands")
+@router.get(
+    "/{device_id}/commands"
+)
 def get_commands(
     device_id: str,
     authorization: Optional[str] = Header(
@@ -718,7 +935,10 @@ def get_commands(
         x_emma_token,
     )
 
-    if not bool(device["connected"]):
+    if not bool(
+        device["connected"]
+    ):
+
         raise HTTPException(
             status_code=409,
             detail="Device is not connected.",
@@ -750,7 +970,9 @@ def get_commands(
 # COMMAND RESULT
 # ============================================================
 
-@router.post("/{device_id}/command-result")
+@router.post(
+    "/{device_id}/command-result"
+)
 def command_result(
     device_id: str,
     result: dict,
@@ -778,8 +1000,14 @@ def command_result(
 
     print("=" * 60)
     print("COMMAND RESULT")
-    print("Device:", device_id)
-    print("Result:", result)
+    print(
+        "Device:",
+        device_id,
+    )
+    print(
+        "Result:",
+        result,
+    )
     print("=" * 60)
 
     return {
