@@ -35,15 +35,84 @@ OFFLINE_DIR.mkdir(
 # ============================================================
 
 SUPPORTED_LANGUAGES = {
+
     "hindi": {
         "name": "Hindi",
         "code": "hi-IN",
         "script": "Devanagari",
     },
+
     "santhali": {
         "name": "Santhali",
         "code": "sat-IN",
         "script": "Ol Chiki",
+        "sih_primary": True,
+    },
+
+    "tamil": {
+        "name": "Tamil",
+        "code": "ta-IN",
+        "script": "Tamil",
+    },
+
+    "telugu": {
+        "name": "Telugu",
+        "code": "te-IN",
+        "script": "Telugu",
+    },
+
+    "bengali": {
+        "name": "Bengali",
+        "code": "bn-IN",
+        "script": "Bengali",
+    },
+
+    "kannada": {
+        "name": "Kannada",
+        "code": "kn-IN",
+        "script": "Kannada",
+    },
+
+    "malayalam": {
+        "name": "Malayalam",
+        "code": "ml-IN",
+        "script": "Malayalam",
+    },
+
+    "marathi": {
+        "name": "Marathi",
+        "code": "mr-IN",
+        "script": "Devanagari",
+    },
+
+    "gujarati": {
+        "name": "Gujarati",
+        "code": "gu-IN",
+        "script": "Gujarati",
+    },
+
+    "odia": {
+        "name": "Odia",
+        "code": "or-IN",
+        "script": "Odia",
+    },
+
+    "punjabi": {
+        "name": "Punjabi",
+        "code": "pa-IN",
+        "script": "Gurmukhi",
+    },
+
+    "assamese": {
+        "name": "Assamese",
+        "code": "as-IN",
+        "script": "Bengali-Assamese",
+    },
+
+    "english": {
+        "name": "English",
+        "code": "en-IN",
+        "script": "Latin",
     },
 }
 
@@ -94,22 +163,186 @@ class FlashcardRequest(BaseModel):
 # ============================================================
 
 TRANSLATION_DICTIONARY = {
+
+    # ========================================================
+    # GREETINGS
+    # ========================================================
+
     "hello": "ᱡᱚᱦᱟᱨ",
     "namaste": "ᱡᱚᱦᱟᱨ",
-    "thank you": "ᱥᱟᱹᱜᱟᱹᱣ",
-    "one": "᱑",
-    "two": "᱒",
-    "three": "᱓",
-    "four": "᱔",
-    "five": "᱕",
-    "six": "᱖",
-    "seven": "᱗",
-    "eight": "᱘",
-    "nine": "᱙",
-    "ten": "᱑᱐",
+
+    # ========================================================
+    # NUMBERS
+    # ========================================================
+
+    "one": "ᱮᱠᱚ",
+    "two": "ᱵᱟᱨ",
+    "three": "ᱯᱮ",
+    "four": "ᱯᱳᱱ",
+    "five": "ᱢᱚᱬᱮ",
+    "six": "ᱛᱩᱨᱩᱭ",
+    "seven": "ᱮᱭᱟᱭ",
+    "eight": "ᱤᱨᱟᱹᱞ",
+    "nine": "ᱟᱨᱮ",
+    "ten": "ᱜᱮᱞ",
+
+    # ========================================================
+    # BASIC PEOPLE / PRONOUNS
+    # ========================================================
+
+    "i": "ᱤᱧ",
+    "you": "ᱟᱢ",
+    "he": "ᱟᱡ",
+    "she": "ᱟᱡ",
+    "we": "ᱟᱵᱚ",
+    "child": "ᱦᱚᱱ",
+    "children": "ᱦᱚᱱ ᱠᱚ",
+
+    # ========================================================
+    # BASIC PLACES / OBJECTS
+    # ========================================================
+
+    "house": "ᱚᱲᱟᱜ",
+    "home": "ᱚᱲᱟᱜ",
+    "school": "ᱤᱥᱠᱩᱞ",
+    "book": "ᱯᱩᱛᱷᱤ",
+    "name": "ᱧᱩᱛᱩᱢ",
+    "water": "ᱫᱟᱜ",
+    "land": "ᱚᱛ",
+    "earth": "ᱚᱛ",
+    "bamboo": "ᱢᱟᱴ",
+    "hair": "ᱩᱯ",
+    "mouth": "ᱢᱚᱪᱟ",
+    "head": "ᱵᱚᱦᱚᱠ",
+    "tooth": "ᱫᱟᱴᱟ",
+    "ear": "ᱞᱩᱛᱩᱨ",
+    "eye": "ᱢᱮᱫ",
+    "hand": "ᱛᱤ",
+    "foot": "ᱡᱟᱝᱜᱟ",
+
+    # ========================================================
+    # ANIMALS
+    # ========================================================
+
+    "dog": "ᱥᱮᱛᱟ",
+    "tiger": "ᱠᱩᱞ",
+    "bear": "ᱵᱟᱱᱟ",
+    "ox": "ᱫᱷᱟᱱᱜᱽᱨᱟ",
+
+    # ========================================================
+    # CLASSROOM ACTIONS
+    # ========================================================
+
+    "write": "ᱚᱞ",
+    "see": "ᱧᱮᱞ",
+    "go": "ᱪᱟᱞᱟᱜ",
+    "listen": "ᱟᱧᱡᱚᱢ",
+    "speak": "ᱨᱚᱲ",
+    "read": "ᱯᱟᱲᱦᱟᱣ",
+    "learn": "ᱥᱤᱠᱷᱟᱣ",
+    "teach": "ᱥᱤᱠᱷᱟᱣ",
+    "come": "ᱦᱤᱡᱩ",
+    "sit": "ᱫᱚᱦᱚ",
+    "stand": "ᱛᱤᱝ",
+    "look": "ᱧᱮᱞ",
+    "answer": "ᱡᱚᱵᱟᱵ",
+
+    # ========================================================
+    # BASIC CLASSROOM WORDS
+    # ========================================================
+
+    "teacher": "ᱪᱮᱫᱟᱠ",
+    "student": "ᱪᱮᱫᱟᱠ ᱠᱚ",
+    "lesson": "ᱯᱟᱲᱦᱟᱣ",
+    "question": "ᱡᱚᱵᱟᱵ",
+    "answer": "ᱡᱚᱵᱟᱵ",
+    "book": "ᱯᱩᱛᱷᱤ",
+
+    # ========================================================
+    # YES / NO / HELP
+    # ========================================================
+
+    "yes": "ᱦᱚᱸ",
+    "no": "ᱵᱟᱝ",
+    "help": "ᱥᱟᱦᱟᱭ",
+    "please": "ᱫᱚᱭᱟ ᱠᱟᱛᱮ",
+    "thank you": "ᱵᱤᱨ ᱵᱟᱨᱟᱭ",
+
+    # ========================================================
+    # COMMON CLASSROOM PHRASES
+    # ========================================================
+
+    "come here": "ᱱᱚᱸᱰᱮ ᱦᱤᱡᱩ ᱢᱮ",
+    "sit down": "ᱫᱚᱦᱚ ᱢᱮ",
+    "listen carefully": "ᱥᱟᱹᱜᱟᱹᱭ ᱟᱧᱡᱚᱢ ᱢᱮ",
+    "look here": "ᱱᱚᱸᱰᱮ ᱧᱮᱞ ᱢᱮ",
+    "read this": "ᱱᱚᱶᱟ ᱯᱟᱲᱦᱟᱣ ᱢᱮ",
+    "write this": "ᱱᱚᱶᱟ ᱚᱞ ᱢᱮ",
+    "come to school": "ᱤᱥᱠᱩᱞ ᱛᱮ ᱦᱤᱡᱩ ᱢᱮ",
+
+    # ========================================================
+    # BASIC QUESTION PHRASES
+    # ========================================================
+
+    "what is your name": "ᱟᱢ ᱨᱮᱱ ᱧᱩᱛᱩᱢ ᱪᱮᱫ?",
+    "how are you": "ᱪᱮᱫ ᱞᱮᱠᱟ ᱢᱮᱱᱟᱢᱟ?",
+    "how much": "ᱚᱱᱛᱮ?",
+    "i do not understand": "ᱟᱤᱧ ᱵᱩᱡᱷᱤ ᱵᱟᱝ",
+    "please help me": "ᱟᱤᱧ ᱥᱟᱦᱟᱭ ᱢᱮ",
+
+    # ========================================================
+    # BASIC COLOURS
+    # ========================================================
+
+    "red": "ᱞᱟᱞ",
+    "green": "ᱦᱟᱨᱤᱭᱟᱹ",
+    "blue": "ᱱᱤᱞ",
+    "yellow": "ᱦᱮᱸᱫᱮ",
+    "black": "ᱦᱮᱸᱫᱮ",
+
+    # ========================================================
+    # BASIC FOOD / DAILY LIFE
+    # ========================================================
+
+    "rice": "ᱡᱚᱢ",
+    "food": "ᱡᱚᱢ",
+    "drink": "ᱧᱩ",
+    "eat": "ᱡᱚᱢ",
+    "water": "ᱫᱟᱜ",
+
+    # ========================================================
+    # NATURE
+    # ========================================================
+
+    "sun": "ᱥᱤᱝᱜᱤ",
+    "moon": "ᱪᱟᱹᱸᱫᱚ",
+    "star": "ᱤᱯᱤᱞ",
+    "tree": "ᱫᱟᱨᱮ",
+    "forest": "ᱵᱤᱨ",
+    "rain": "ᱡᱚᱞ",
+
+    # ========================================================
+    # TIME / DAILY ROUTINE
+    # ========================================================
+
+    "today": "ᱛᱤᱦᱤᱧ",
+    "tomorrow": "ᱜᱟᱯᱟ",
+    "day": "ᱢᱟᱦᱟ",
+    "morning": "ᱥᱟᱛ",
+    "night": "ᱧᱤᱫ",
+
+    # ========================================================
+    # USEFUL ADJECTIVES
+    # ========================================================
+
+    "good": "ᱵᱮᱥ",
+    "bad": "ᱵᱟᱹᱝ",
+    "big": "ᱢᱟᱨᱟᱝ",
+    "small": "ᱦᱩᱰᱤᱧ",
+    "new": "ᱱᱟᱣᱟ",
+    "old": "ᱢᱟᱨᱟᱝ",
+
 }
-
-
 REVERSE_TRANSLATION_DICTIONARY = {
     value: key
     for key, value in TRANSLATION_DICTIONARY.items()
@@ -314,12 +547,14 @@ def translate_text(
 
 @router.get("/languages")
 def get_languages():
+
     return {
         "success": True,
         "module": "EMMA Education",
         "problem_statement": "SIH26042",
-        "prototype_language": "Santhali",
+        "primary_sih_language": "Santhali",
         "languages": SUPPORTED_LANGUAGES,
+        "language_count": len(SUPPORTED_LANGUAGES),
     }
 
 
