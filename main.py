@@ -1,4 +1,5 @@
 from device_database import initialize_database
+from education_service import router as education_router
 from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel, Field
 from groq import Groq
@@ -34,6 +35,9 @@ initialize_database()
 
 app.include_router(
     device_gateway_router,
+)
+app.include_router(
+    education_router,
 )
 
 
